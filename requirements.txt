@@ -1,0 +1,9 @@
+agent-framework-core>=1.22.0
+agent-framework-openai>=1.17.0
+agent-framework-anthropic>=1.0.0b261015
+yfinance>=0.2.50
+pandas>=2.2.0
+requests>=2.32.0
+python-dotenv>=1.0.0
+kiteconnect>=5.0.1
+scikit-learn>=1.5.0

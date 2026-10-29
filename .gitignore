@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+reports/
+src/stock_agents/kite/.intraday_state.json
+src/stock_agents/kite/.orb_filter_model.pkl
+src/stock_agents/.premarket_latest.json
+src/stock_agents/.premarket_history.jsonl
