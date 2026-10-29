@@ -42,7 +42,10 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pytest
+        # Exit code 5 = "no tests collected" - not a real failure, since this
+        # repo has no test suite yet. Any other non-zero exit still fails the build.
+        pytest; code=$?
+        if [ $code -ne 0 ] && [ $code -ne 5 ]; then exit $code; fi
 
   premarket-overnight:
     # Manual/scheduled only - skipped on every push/PR since each run makes real
