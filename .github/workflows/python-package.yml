@@ -8,6 +8,15 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: "Space-separated NSE symbols for the overnight report"
+        required: false
+        default: "HDFCBANK ICICIBANK SBIN KOTAKBANK AXISBANK BAJFINANCE TCS INFY HCLTECH WIPRO TECHM RELIANCE ONGC COALINDIA TATASTEEL NTPC POWERGRID MARUTI TMCV BAJAJ-AUTO HINDUNILVR ITC NESTLEIND TITAN SUNPHARMA DRREDDY CIPLA LT ULTRACEMCO"
+  schedule:
+    # 02:30 UTC = 08:00 IST, ahead of NSE pre-open (09:00 IST).
+    - cron: "30 2 * * 1-5"
 
 jobs:
   build:
@@ -38,3 +47,45 @@ jobs:
     - name: Test with pytest
       run: |
         pytest
+
+  premarket-overnight:
+    # Manual/scheduled only - skipped on every push/PR since each run makes real
+    # LLM calls (cost + ~30-90s per symbol) via the configured OPENAI/ANTHROPIC key.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run overnight pre-market report
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_CHAT_MODEL_ID: ${{ vars.OPENAI_CHAT_MODEL_ID }}
+          ANTHROPIC_MODEL_ID: ${{ vars.ANTHROPIC_MODEL_ID }}
+          # KITE_ACCESS_TOKEN expires every trading day and is issued via an
+          # interactive browser login (kite/login.py) - it can't be refreshed by
+          # this workflow. Without a same-day token here, get_derivatives_snapshot
+          # just reports "available: false" and the report still completes.
+          KITE_API_KEY: ${{ secrets.KITE_API_KEY }}
+          KITE_API_SECRET: ${{ secrets.KITE_API_SECRET }}
+          KITE_ACCESS_TOKEN: ${{ secrets.KITE_ACCESS_TOKEN }}
+          PYTHONPATH: src
+          SYMBOLS: ${{ github.event.inputs.symbols || 'HDFCBANK ICICIBANK SBIN KOTAKBANK AXISBANK BAJFINANCE TCS INFY HCLTECH WIPRO TECHM RELIANCE ONGC COALINDIA TATASTEEL NTPC POWERGRID MARUTI TMCV BAJAJ-AUTO HINDUNILVR ITC NESTLEIND TITAN SUNPHARMA DRREDDY CIPLA LT ULTRACEMCO' }}
+        run: |
+          mkdir -p reports
+          python -m stock_agents.premarket overnight $SYMBOLS --out reports/overnight_$(date +%Y%m%d).md
+      - name: Upload overnight report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: premarket-overnight-report
+          path: reports/overnight_*.md
+          if-no-files-found: error
+
