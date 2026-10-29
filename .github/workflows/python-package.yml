@@ -43,9 +43,14 @@ jobs:
     - name: Test with pytest
       run: |
         # Exit code 5 = "no tests collected" - not a real failure, since this
-        # repo has no test suite yet. Any other non-zero exit still fails the build.
-        pytest; code=$?
-        if [ $code -ne 0 ] && [ $code -ne 5 ]; then exit $code; fi
+        # repo has no test suite yet. The `|| code=$?` form is required because
+        # this shell runs with `set -e`, which would otherwise abort on pytest's
+        # own non-zero exit before the code is even captured.
+        pytest || code=$?
+        code=${code:-0}
+        if [ "$code" -ne 0 ] && [ "$code" -ne 5 ]; then
+          exit "$code"
+        fi
 
   premarket-overnight:
     # Manual/scheduled only - skipped on every push/PR since each run makes real
