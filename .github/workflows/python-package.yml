@@ -97,6 +97,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: premarket-overnight-report
-          path: reports/overnight_*.md
+          path: |
+            reports/overnight_*.md
+            reports/.premarket_latest.json
           if-no-files-found: error
 

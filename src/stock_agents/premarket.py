@@ -28,8 +28,10 @@ from .premarket_calibration import HISTORY_PATH, SECTOR_MAP, build_calibration_n
 from .premarket_tools import compute_price_plan, get_preopen_quote, get_prior_session_summary, get_volatility_snapshot
 
 # Last overnight report's structured calls, read by preopen to check the actual
-# gap against what was projected the night before.
-STATE_PATH = Path(__file__).parent / ".premarket_latest.json"
+# gap against what was projected the night before. Lives in reports/ (repo root)
+# rather than next to this module, so it ships alongside the markdown reports -
+# including as a CI workflow artifact.
+STATE_PATH = Path(__file__).resolve().parents[2] / "reports" / ".premarket_latest.json"
 
 
 def build_premarket_brief(symbol: str) -> str:
@@ -128,6 +130,7 @@ async def build_overnight_report(
             on_symbol_done(i, len(symbols), symbol, text)
 
     if calls:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATE_PATH.write_text(json.dumps({"generated_at": str(datetime.now()), "calls": calls}, indent=2))
 
     skew_warning = _check_bias_skew(calls)
