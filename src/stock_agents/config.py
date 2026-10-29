@@ -28,6 +28,10 @@ def has_anthropic() -> bool:
     return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
 
 
+def has_openai() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+
 @lru_cache(maxsize=1)
 def openai_client() -> OpenAIChatClient:
     """OpenAI client.
@@ -51,6 +55,17 @@ def anthropic_client() -> AnthropicClient:
     )
 
 
-def reasoning_client():
-    """Client for the judgement-heavy agents: Anthropic when available, else OpenAI."""
-    return anthropic_client() if has_anthropic() else openai_client()
+def default_client():
+    """Single client-selection rule used by every agent, so each provider key works
+    as a fully standalone setup on its own: OpenAI if its key is set (the default
+    when both keys are present), else Anthropic if its key is set, else an error
+    naming both env vars to fill in.
+    """
+    if has_openai():
+        return openai_client()
+    if has_anthropic():
+        return anthropic_client()
+    raise RuntimeError(
+        "Neither OPENAI_API_KEY nor ANTHROPIC_API_KEY is set. Copy .env.example to "
+        ".env and fill in at least one."
+    )

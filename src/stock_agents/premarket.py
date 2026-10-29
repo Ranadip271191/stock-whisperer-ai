@@ -147,7 +147,7 @@ def _check_bias_skew(calls: dict[str, dict]) -> str | None:
     bullish_frac = directional.count("BULLISH") / len(directional)
     bearish_frac = directional.count("BEARISH") / len(directional)
     dominant, frac = ("BULLISH", bullish_frac) if bullish_frac >= bearish_frac else ("BEARISH", bearish_frac)
-    if frac < 0.75:
+    if frac < 0.65:
         return None
     return (
         f"\n\u26a0 **Skew warning**: {frac * 100:.0f}% of directional calls in this batch are {dominant}. "

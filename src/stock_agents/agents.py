@@ -1,14 +1,15 @@
 """Specialist agents for the stock analysis and trading crew.
 
-OpenAI models handle the quantitative/structured roles, Anthropic models handle
-the narrative reasoning and judgement-heavy roles.
+All agents use the same provider-selection rule (default_client): OpenAI if its
+key is set (the default when both are present), else Anthropic - each key works
+as a fully standalone setup on its own.
 """
 
 from __future__ import annotations
 
 from agent_framework import Agent
 
-from .config import openai_client, reasoning_client
+from .config import default_client
 from .ipo_tools import get_ipo_detail
 from .premarket_tools import PREMARKET_TOOLS
 from .tools import (
@@ -38,7 +39,7 @@ _DATA_RULES = (
 
 def market_data_agent() -> Agent:
     return Agent(
-        client=openai_client(),
+        client=default_client(),
         name="MarketDataAgent",
         description="Retrieves and summarises raw price and volume data.",
         instructions=(
@@ -54,7 +55,7 @@ def market_data_agent() -> Agent:
 
 def technical_analyst_agent() -> Agent:
     return Agent(
-        client=openai_client(),
+        client=default_client(),
         name="TechnicalAnalyst",
         description="Reads chart structure, momentum and trend indicators.",
         instructions=(
@@ -71,7 +72,7 @@ def technical_analyst_agent() -> Agent:
 
 def fundamental_analyst_agent() -> Agent:
     return Agent(
-        client=reasoning_client(),
+        client=default_client(),
         name="FundamentalAnalyst",
         description="Evaluates valuation, profitability, growth and balance sheet.",
         instructions=(
@@ -87,7 +88,7 @@ def fundamental_analyst_agent() -> Agent:
 
 def sentiment_analyst_agent() -> Agent:
     return Agent(
-        client=reasoning_client(),
+        client=default_client(),
         name="SentimentAnalyst",
         description="Gauges news flow and sell-side positioning.",
         instructions=(
@@ -108,7 +109,7 @@ def sentiment_analyst_agent() -> Agent:
 
 def risk_manager_agent() -> Agent:
     return Agent(
-        client=reasoning_client(),
+        client=default_client(),
         name="RiskManager",
         description="Stress-tests the thesis and defines risk limits.",
         instructions=(
@@ -128,7 +129,7 @@ def risk_manager_agent() -> Agent:
 
 def trade_strategist_agent() -> Agent:
     return Agent(
-        client=openai_client(),
+        client=default_client(),
         name="TradeStrategist",
         description="Synthesises all inputs into an actionable trade plan.",
         instructions=(
@@ -158,12 +159,14 @@ def build_crew() -> dict[str, Agent]:
 
 def premarket_scoring_agent() -> Agent:
     return Agent(
-        client=reasoning_client(),
+        client=default_client(),
         name="PreMarketScoringAgent",
         description="Synthesizes overnight global, sector, company and derivatives signals into a directional call.",
         instructions=(
             "You are a pre-market analyst preparing today's watchlist. For each ticker, use your "
-            "tools to pull: the overnight global market snapshot, the stock's sector index move, "
+            "tools to pull: the overnight global market snapshot, recent broad market-wide news "
+            "(index-level rally/selloff drivers, FII/DII flows, macro catalysts - a single stock's "
+            "own headlines won't surface why the whole market moved), the stock's sector index move, "
             "its prior session's price action, its volatility snapshot (ATR and typical overnight "
             "gap size), its derivatives (futures OI/volume) snapshot, recent news headlines, and "
             "NSE corporate announcements. "
@@ -171,12 +174,13 @@ def premarket_scoring_agent() -> Agent:
             "Weigh conflicting signals explicitly (e.g. bullish global cues but bearish company news) "
             "and say which you weighted more heavily and why. If a data source returned unavailable, "
             "say so and lower your confidence rather than guessing. "
-            "Treat a conflict between the stock's call and its own sector's trend, or between the call "
-            "and same-day company news sentiment (e.g. an earnings beat the same morning), as a specific "
-            "reason to cap confidence below 55 and say so in the Reason - tracked outcomes show calls "
-            "that fight their own sector or same-day news miss more often than they hit. The sector "
-            "snapshot is a prior-session close-to-close number, not live, so don't treat sector agreement "
-            "alone as reassurance that it will hold through today's session. "
+            "Treat a conflict between the stock's call and its own sector's trend, a broad market-wide "
+            "catalyst (e.g. a strong FII-inflow-driven rally), or same-day company news sentiment (e.g. "
+            "an earnings beat the same morning), as a specific reason to cap confidence below 55 and say "
+            "so in the Reason - tracked outcomes show calls that fight their own sector, the broader "
+            "market tape, or same-day news miss more often than they hit. The sector snapshot is a "
+            "prior-session close-to-close number, not live, so don't treat sector agreement alone as "
+            "reassurance that it will hold through today's session. "
             "Default to NEUTRAL: tracked results show this system over-calls BULLISH relative to actual "
             "outcomes, so only call BULLISH or BEARISH when the specific numbers/headlines for THIS "
             "ticker clearly tilt one way, not because routine/neutral news sounds positive in isolation "
@@ -202,7 +206,7 @@ def premarket_scoring_agent() -> Agent:
 
 def ipo_analyst_agent() -> Agent:
     return Agent(
-        client=reasoning_client(),
+        client=default_client(),
         name="IPOAnalyst",
         description="Analyzes an active NSE IPO's issue mechanics, subscription demand and news coverage.",
         instructions=(

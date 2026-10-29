@@ -100,6 +100,20 @@ def get_global_market_snapshot() -> str:
 
 
 @tool
+def get_market_wide_news(
+    limit: Annotated[int, Field(description="Maximum number of headlines.", ge=1, le=10)] = 6,
+) -> str:
+    """Get recent broad market-moving headlines - index-level rally/selloff drivers,
+    FII/DII flows, RBI/macro catalysts - not tied to any single stock. A per-stock
+    news search won't surface 'why did the whole market move today', which often
+    explains a stock moving against its own company-specific thesis.
+    """
+    from .tools import get_recent_news
+
+    return get_recent_news.func("Sensex Nifty stock market today", limit)
+
+
+@tool
 def get_sector_snapshot(
     sector: Annotated[
         str,
@@ -332,6 +346,7 @@ def get_preopen_quote(symbol: str) -> dict[str, Any]:
 
 PREMARKET_TOOLS = [
     get_global_market_snapshot,
+    get_market_wide_news,
     get_sector_snapshot,
     get_prior_session_summary,
     get_volatility_snapshot,
