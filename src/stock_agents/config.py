@@ -40,8 +40,11 @@ def openai_client() -> OpenAIChatClient:
     (https://<resource>.services.ai.azure.com/openai/v1) to use Azure instead;
     the model then refers to your Azure deployment name.
     """
+    # `or DEFAULT` (not os.getenv(name, DEFAULT)) because CI can set an env var to
+    # "" rather than leaving it unset (e.g. an empty GitHub Actions `vars.X`), and
+    # os.getenv's default only applies when the var is absent, not when it's empty.
     return OpenAIChatClient(
-        model=os.getenv("OPENAI_CHAT_MODEL_ID", DEFAULT_OPENAI_MODEL),
+        model=os.getenv("OPENAI_CHAT_MODEL_ID") or DEFAULT_OPENAI_MODEL,
         api_key=_require("OPENAI_API_KEY"),
         base_url=os.getenv("OPENAI_BASE_URL") or None,
     )
@@ -50,7 +53,7 @@ def openai_client() -> OpenAIChatClient:
 @lru_cache(maxsize=1)
 def anthropic_client() -> AnthropicClient:
     return AnthropicClient(
-        model=os.getenv("ANTHROPIC_MODEL_ID", DEFAULT_ANTHROPIC_MODEL),
+        model=os.getenv("ANTHROPIC_MODEL_ID") or DEFAULT_ANTHROPIC_MODEL,
         api_key=_require("ANTHROPIC_API_KEY"),
     )
 
