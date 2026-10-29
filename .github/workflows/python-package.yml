@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       symbols:
-        description: "Space-separated NSE symbols for the overnight report"
+        description: "Space-separated NSE symbols for the overnight report; leave empty to use src/nse_top60_index_symbols.csv"
         required: false
-        default: "HDFCBANK ICICIBANK SBIN KOTAKBANK AXISBANK BAJFINANCE TCS INFY HCLTECH WIPRO TECHM RELIANCE ONGC COALINDIA TATASTEEL NTPC POWERGRID MARUTI TMCV BAJAJ-AUTO HINDUNILVR ITC NESTLEIND TITAN SUNPHARMA DRREDDY CIPLA LT ULTRACEMCO"
+        default: ""
   schedule:
     # 02:30 UTC = 08:00 IST, ahead of NSE pre-open (09:00 IST).
     - cron: "30 2 * * 1-5"
@@ -68,6 +68,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Load default symbols from CSV
+        id: load_symbols
+        run: |
+          # Top-60 NIFTY50/100 symbols, tradingsymbol is column 1; used as the
+          # default watchlist when no manual `symbols` input is given.
+          SYMS=$(tail -n +2 src/nse_top60_index_symbols.csv | cut -d, -f1 | tr '\n' ' ' | sed 's/ *$//')
+          echo "symbols=$SYMS" >> "$GITHUB_OUTPUT"
       - name: Run overnight pre-market report
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -82,7 +89,7 @@ jobs:
           KITE_API_SECRET: ${{ secrets.KITE_API_SECRET }}
           KITE_ACCESS_TOKEN: ${{ secrets.KITE_ACCESS_TOKEN }}
           PYTHONPATH: src
-          SYMBOLS: ${{ github.event.inputs.symbols || 'HDFCBANK ICICIBANK SBIN KOTAKBANK AXISBANK BAJFINANCE TCS INFY HCLTECH WIPRO TECHM RELIANCE ONGC COALINDIA TATASTEEL NTPC POWERGRID MARUTI TMCV BAJAJ-AUTO HINDUNILVR ITC NESTLEIND TITAN SUNPHARMA DRREDDY CIPLA LT ULTRACEMCO' }}
+          SYMBOLS: ${{ github.event.inputs.symbols || steps.load_symbols.outputs.symbols }}
         run: |
           mkdir -p reports
           python -m stock_agents.premarket overnight $SYMBOLS --out reports/overnight_$(date +%Y%m%d).md
