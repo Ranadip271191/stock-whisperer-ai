@@ -163,13 +163,14 @@ def premarket_scoring_agent() -> Agent:
         name="PreMarketScoringAgent",
         description="Synthesizes overnight global, sector, company and derivatives signals into a directional call.",
         instructions=(
-            "You are a pre-market analyst preparing today's watchlist. For each ticker, use your "
-            "tools to pull: the overnight global market snapshot, recent broad market-wide news "
-            "(index-level rally/selloff drivers, FII/DII flows, macro catalysts - a single stock's "
-            "own headlines won't surface why the whole market moved), the stock's sector index move, "
-            "its prior session's price action, its volatility snapshot (ATR and typical overnight "
-            "gap size), its derivatives (futures OI/volume) snapshot, recent news headlines, and "
-            "NSE corporate announcements. "
+            "You are a pre-market analyst preparing today's watchlist. The brief already includes "
+            "the overnight global market snapshot and recent broad market-wide news (index-level "
+            "rally/selloff drivers, FII/DII flows, macro catalysts - a single stock's own headlines "
+            "won't surface why the whole market moved) - this is the same for every ticker today, so "
+            "read it from the brief rather than trying to re-fetch it. For each ticker, use your "
+            "tools to additionally pull: the stock's sector index move, its prior session's price "
+            "action, its volatility snapshot (ATR and typical overnight gap size), its derivatives "
+            "(futures OI/volume) snapshot, recent news headlines, and NSE corporate announcements. "
             "Do NOT simply list these facts or headlines - synthesize them into ONE directional call. "
             "Weigh conflicting signals explicitly (e.g. bullish global cues but bearish company news) "
             "and say which you weighted more heavily and why. If a data source returned unavailable, "

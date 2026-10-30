@@ -344,9 +344,12 @@ def get_preopen_quote(symbol: str) -> dict[str, Any]:
     }
 
 
+# get_global_market_snapshot and get_market_wide_news are deliberately NOT in this
+# list - their output is identical for every symbol in a batch, so premarket.py
+# fetches each once per overnight run and injects the result into every symbol's
+# brief directly, instead of 60 symbols each re-fetching and re-paying the token
+# cost for the same global snapshot/headlines.
 PREMARKET_TOOLS = [
-    get_global_market_snapshot,
-    get_market_wide_news,
     get_sector_snapshot,
     get_prior_session_summary,
     get_volatility_snapshot,

@@ -25,7 +25,14 @@ from agent_framework import Agent
 
 from .agents import premarket_scoring_agent
 from .premarket_calibration import HISTORY_PATH, SECTOR_MAP, build_calibration_note
-from .premarket_tools import compute_price_plan, get_preopen_quote, get_prior_session_summary, get_volatility_snapshot
+from .premarket_tools import (
+    compute_price_plan,
+    get_global_market_snapshot,
+    get_market_wide_news,
+    get_preopen_quote,
+    get_prior_session_summary,
+    get_volatility_snapshot,
+)
 
 # Last overnight report's structured calls, read by preopen to check the actual
 # gap against what was projected the night before. Lives in reports/ (repo root)
@@ -34,16 +41,18 @@ from .premarket_tools import compute_price_plan, get_preopen_quote, get_prior_se
 STATE_PATH = Path(__file__).resolve().parents[2] / "reports" / ".premarket_latest.json"
 
 
-def build_premarket_brief(symbol: str) -> str:
+def build_premarket_brief(symbol: str, market_context: str | None = None) -> str:
     sector = SECTOR_MAP.get(symbol.upper(), "UNMAPPED")
     brief = (
         f"NSE symbol: {symbol.upper()}\n"
         f"Sector: {sector}\n\n"
-        "Gather the overnight global snapshot, this stock's sector index move, its "
-        "prior session's price action, its derivatives snapshot, and overnight "
-        "company-specific news and NSE corporate announcements. Then produce your "
-        "directional call for today's session in the required format."
+        "Gather this stock's sector index move, its prior session's price action, "
+        "its derivatives snapshot, and overnight company-specific news and NSE "
+        "corporate announcements. Then produce your directional call for today's "
+        "session in the required format."
     )
+    if market_context:
+        brief = f"{brief}\n\n{market_context}"
     note = build_calibration_note(symbol)
     return f"{brief}\n\n{note}" if note else brief
 
@@ -97,6 +106,79 @@ def _insert_price_plan(text: str, plan: dict) -> str:
     return f"{text.rstrip()}\n\n{_PRICE_PLAN_NOTE}\n"
 
 
+def _approx_tokens(text: str) -> int:
+    """Deterministic, provider-agnostic token size estimate (~4 chars/token).
+
+    Used only to split a single LLM call's *real* token usage (below) into
+    segments the provider itself doesn't break down - e.g. how much of one
+    call's input was the shared market snapshot vs. everything else. Always
+    returns the same number for the same text, so segment proportions are
+    reproducible across runs even though the absolute count is an estimate.
+    """
+    return max(1, len(text) // 4)
+
+
+def _usage_counts(response) -> dict[str, int]:
+    """Extract the provider-reported (exact, billed) token counts from an
+    agent.run() response. This is the authoritative number for "how many
+    tokens did this call actually use" - not an estimate.
+    """
+    usage = getattr(response, "usage_details", None) or {}
+    input_tokens = usage.get("input_token_count") or 0
+    output_tokens = usage.get("output_token_count") or 0
+    total_tokens = usage.get("total_token_count") or (input_tokens + output_tokens)
+    return {"input": input_tokens, "output": output_tokens, "total": total_tokens}
+
+
+def _build_token_usage_section(market_context: str, symbol_usage: list[dict]) -> str:
+    """Per-overnight-call token report: exact provider-reported totals, plus a
+    deterministic estimate of how much of the input was the shared market
+    context (fetched once, resent in every symbol's prompt) vs. everything
+    else (instructions, sector/news/derivatives tool output, calibration note).
+    """
+    n = len(symbol_usage)
+    if n == 0:
+        return ""
+
+    total_input = sum(u["input"] for u in symbol_usage)
+    total_output = sum(u["output"] for u in symbol_usage)
+    total_tokens = sum(u["total"] for u in symbol_usage)
+    have_real_usage = total_tokens > 0
+
+    lines = ["\n## Token Usage\n"]
+    if not have_real_usage:
+        lines.append(
+            "_Provider did not report token usage for this run (usage_details was empty); "
+            "no counts available._\n"
+        )
+        return "\n".join(lines)
+
+    market_context_tokens_est = _approx_tokens(market_context)
+    shared_context_total_est = min(market_context_tokens_est * n, total_input)
+    other_input_est = max(total_input - shared_context_total_est, 0)
+
+    lines.append(f"- **Total tokens this run**: {total_tokens:,} (input: {total_input:,}, output: {total_output:,})")
+    lines.append(f"- **Symbols scored**: {n} (avg {total_tokens // n:,} tokens/symbol)")
+    lines.append("- **Segment breakdown** (input tokens; shared-context split is a deterministic size estimate, "
+                  "the totals above are exact provider-reported counts):")
+    lines.append(
+        f"  - Shared market context (global snapshot + market-wide news, repeated in every symbol's prompt): "
+        f"~{shared_context_total_est:,} ({shared_context_total_est * 100 // max(total_input, 1)}% of input)"
+    )
+    lines.append(
+        f"  - Per-symbol instructions, tool output (sector/prior session/volatility/derivatives/news) and "
+        f"calibration note: ~{other_input_est:,} ({other_input_est * 100 // max(total_input, 1)}% of input)"
+    )
+    lines.append(f"  - Model output (reasoning + response text): {total_output:,}")
+
+    lines.append("\n| Symbol | Input tokens | Output tokens | Total tokens |")
+    lines.append("|---|---|---|---|")
+    for u in symbol_usage:
+        lines.append(f"| {u['symbol']} | {u['input']:,} | {u['output']:,} | {u['total']:,} |")
+
+    return "\n".join(lines) + "\n"
+
+
 async def build_overnight_report(
     symbols: list[str], agent: Agent | None = None, on_symbol_done=None
 ) -> str:
@@ -110,12 +192,26 @@ async def build_overnight_report(
     to get live progress instead of waiting silently for all symbols to finish.
     """
     agent = agent or premarket_scoring_agent()
+    # Fetched once for the whole batch, not per symbol - identical for every symbol
+    # in a run, so refetching per symbol would just burn tokens/network for the
+    # same answer (see the note in premarket_tools.PREMARKET_TOOLS).
+    market_context = (
+        "Overnight global market snapshot:\n"
+        f"{get_global_market_snapshot.func()}\n\n"
+        "Recent broad market-wide news (index-level rally/selloff drivers, FII/DII "
+        "flows, macro catalysts):\n"
+        f"{get_market_wide_news.func()}"
+    )
     sections = [f"# Pre-Market Report \u2014 {datetime.now().date()}\n"]
     calls: dict[str, dict] = {}
+    symbol_usage: list[dict] = []
     for i, symbol in enumerate(symbols, 1):
-        response = await agent.run(build_premarket_brief(symbol))
+        response = await agent.run(build_premarket_brief(symbol, market_context))
         text = response.text
         parsed = _extract_json_block(text)
+
+        usage = _usage_counts(response)
+        symbol_usage.append({"symbol": symbol.upper(), **usage})
 
         if parsed and parsed.get("directional_bias"):
             plan = _build_deterministic_price_plan(symbol, parsed["directional_bias"])
@@ -136,6 +232,8 @@ async def build_overnight_report(
     skew_warning = _check_bias_skew(calls)
     if skew_warning:
         sections.append(skew_warning)
+
+    sections.append(_build_token_usage_section(market_context, symbol_usage))
 
     return "\n".join(sections)
 

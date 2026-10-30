@@ -311,7 +311,6 @@ def _yahoo_news(symbol: str, limit: int) -> list[dict[str, Any]]:
                 "publisher": (content.get("provider") or {}).get("displayName")
                 or entry.get("publisher"),
                 "published": published,
-                "link": content.get("canonicalUrl", {}).get("url") or entry.get("link"),
                 "summary": content.get("summary"),
             }
         )
@@ -336,7 +335,6 @@ def _google_news(symbol: str, limit: int) -> list[dict[str, Any]]:
             "title": entry.findtext("title"),
             "publisher": entry.findtext("source"),
             "published": entry.findtext("pubDate"),
-            "link": entry.findtext("link"),
             "summary": None,
         }
         for entry in entries[:limit]

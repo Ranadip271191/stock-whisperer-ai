@@ -15,8 +15,13 @@ on:
         required: false
         default: ""
   schedule:
-    # 02:30 UTC = 08:00 IST, ahead of NSE pre-open (09:00 IST).
-    - cron: "30 2 * * 1-5"
+    # 01:07 UTC = 06:37 IST. GitHub drops/delays scheduled runs at congested
+    # minutes (:00, :30), so this sits off-peak with ~2h of slack for the run
+    # itself (60 symbols x 30-90s) to finish before NSE pre-open at 09:00 IST.
+    - cron: "7 1 * * 1-5"
+    # TEMPORARY one-off (04:47 UTC on 30 Oct only) to confirm cron fires at all.
+    # Pinned to a single date so it can't repeat; premarket-overnight ignores it.
+    - cron: "47 4 30 10 *"
 
 jobs:
   build:
@@ -55,7 +60,10 @@ jobs:
   premarket-overnight:
     # Manual/scheduled only - skipped on every push/PR since each run makes real
     # LLM calls (cost + ~30-90s per symbol) via the configured OPENAI/ANTHROPIC key.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    # Matching the cron string excludes the throwaway test schedule from spending tokens.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && github.event.schedule == '7 1 * * 1-5')
     runs-on: ubuntu-latest
 
     steps:
