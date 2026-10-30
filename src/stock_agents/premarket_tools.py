@@ -356,6 +356,53 @@ PREMARKET_TOOLS = [
     get_derivatives_snapshot,
 ]
 
+NIFTY_TICKER = "^NSEI"
+
+
+def get_market_regime() -> dict[str, Any]:
+    """Deterministic risk-on/risk-off read for the batch: Nifty's last close-to-close
+    move, its 5-session drift, and how many sector indices closed positive.
+
+    Logged outcomes show stock-specific BEARISH calls get run over on broad up days
+    (1/6 correct vs 4/6 BULLISH on 2026-10-30), so the agent needs the regime stated
+    up front rather than inferring it per symbol.
+    """
+    nifty = _pct_change_from_history(NIFTY_TICKER)
+
+    drift_pct = None
+    try:
+        frame = _drop_in_progress_session(_history_with_retry(NIFTY_TICKER, period="1mo", interval="1d"))
+        if len(frame) >= 6:
+            drift_pct = round((float(frame["Close"].iloc[-1]) / float(frame["Close"].iloc[-6]) - 1) * 100, 2)
+    except ValueError:
+        pass
+
+    sector_moves = {}
+    for name, ticker in SECTOR_INDEX_TICKERS.items():
+        result = _pct_change_from_history(ticker)
+        if result is not None:
+            sector_moves[name] = result["change_pct"]
+    positive = sum(1 for v in sector_moves.values() if v > 0)
+    breadth_pct = round(positive / len(sector_moves) * 100) if sector_moves else None
+
+    nifty_pct = nifty["change_pct"] if nifty else None
+    if nifty_pct is None or breadth_pct is None:
+        regime = "UNKNOWN"
+    elif nifty_pct > 0.3 and breadth_pct >= 60:
+        regime = "RISK_ON"
+    elif nifty_pct < -0.3 and breadth_pct <= 40:
+        regime = "RISK_OFF"
+    else:
+        regime = "MIXED"
+
+    return {
+        "regime": regime,
+        "nifty_change_pct": nifty_pct,
+        "nifty_5session_drift_pct": drift_pct,
+        "sector_breadth_positive_pct": breadth_pct,
+        "sector_moves_pct": sector_moves,
+    }
+
 
 def compute_price_plan(
     prior_close: float,
@@ -383,10 +430,14 @@ def compute_price_plan(
     low, high = center - half_width, center + half_width
     entry = (low + high) / 2
 
+    # ATR is a full-day range, so the old 2-ATR target / 1-ATR stop needed a ~2-sigma
+    # session just to pay out while the stop sat inside ordinary intraday noise -
+    # structurally ~1-in-12 targets vs ~3-in-12 stops regardless of directional skill.
+    # Scaled to a single session's realistic travel, keeping a 1.5:1 reward:risk.
     if bias == "BULLISH":
-        stop, target = entry - atr, entry + 2 * atr
+        stop, target = entry - atr * 0.4, entry + atr * 0.6
     else:
-        stop, target = entry + atr, entry - 2 * atr
+        stop, target = entry + atr * 0.4, entry - atr * 0.6
 
     return {
         "projected_open_low": round(min(low, high), 2),

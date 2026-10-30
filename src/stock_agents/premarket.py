@@ -24,10 +24,17 @@ from pathlib import Path
 from agent_framework import Agent
 
 from .agents import premarket_scoring_agent
-from .premarket_calibration import HISTORY_PATH, SECTOR_MAP, build_calibration_note
+from .premarket_calibration import (
+    HISTORY_PATH,
+    SECTOR_MAP,
+    _dedupe as _dedupe_history,
+    build_calibration_note,
+    calibration_status,
+)
 from .premarket_tools import (
     compute_price_plan,
     get_global_market_snapshot,
+    get_market_regime,
     get_market_wide_news,
     get_preopen_quote,
     get_prior_session_summary,
@@ -196,6 +203,8 @@ async def build_overnight_report(
     # in a run, so refetching per symbol would just burn tokens/network for the
     # same answer (see the note in premarket_tools.PREMARKET_TOOLS).
     market_context = (
+        "Market regime (deterministic, computed from Nifty and sector index closes):\n"
+        f"{json.dumps(get_market_regime(), indent=2)}\n\n"
         "Overnight global market snapshot:\n"
         f"{get_global_market_snapshot.func()}\n\n"
         "Recent broad market-wide news (index-level rally/selloff drivers, FII/DII "
@@ -427,8 +436,13 @@ def log_outcomes(symbols: list[str] | None = None) -> str:
             table_rows.append((symbol, bias, call.get("confidence"), chg, direction_correct, target_hit, stop_hit))
 
     if records:
-        with open(HISTORY_PATH, "a") as f:
-            for record in records:
+        existing = []
+        if HISTORY_PATH.exists():
+            with open(HISTORY_PATH) as f:
+                existing = [json.loads(line) for line in f if line.strip()]
+        merged = _dedupe_history(existing + records)
+        with open(HISTORY_PATH, "w") as f:
+            for record in merged:
                 f.write(json.dumps(record) + "\n")
 
     lines = [f"# Outcome Log \u2014 {datetime.now()}\n"]
@@ -440,7 +454,8 @@ def log_outcomes(symbols: list[str] | None = None) -> str:
         lines.append("## Summary")
         lines.append(f"- Directional accuracy: {hits}/{len(scored)} ({100 * hits / len(scored):.0f}%)" if scored else "- Directional accuracy: n/a")
         lines.append(f"- Targets hit: {targets_hit}/{len(table_rows)}")
-        lines.append(f"- Stops hit: {stops_hit}/{len(table_rows)}\n")
+        lines.append(f"- Stops hit: {stops_hit}/{len(table_rows)}")
+        lines.append(f"- {calibration_status()}\n")
 
         lines.append("| Symbol | Bias (conf) | Actual chg | Direction | Target hit | Stop hit |")
         lines.append("|---|---|---|---|---|---|")
@@ -471,6 +486,7 @@ def summarize_history() -> str:
             line = line.strip()
             if line:
                 records.append(json.loads(line))
+    records = _dedupe_history(records)
 
     if not records:
         return "No history logged yet. Run `track` after market open to start building a record."
@@ -482,6 +498,7 @@ def summarize_history() -> str:
     n_sessions = len({r["date"] for r in records})
 
     lines = [f"# Pre-Market Call Accuracy \u2014 {len(records)} logged calls across {n_sessions} session(s)\n"]
+    lines.append(f"- {calibration_status()}")
     if directional:
         lines.append(f"- Directional accuracy: {direction_hits}/{len(directional)} ({100 * direction_hits / len(directional):.1f}%)")
     else:
