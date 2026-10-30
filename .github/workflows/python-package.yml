@@ -19,9 +19,9 @@ on:
     # minutes (:00, :30), so this sits off-peak with ~2h of slack for the run
     # itself (60 symbols x 30-90s) to finish before NSE pre-open at 09:00 IST.
     - cron: "7 1 * * 1-5"
-    # TEMPORARY one-off (04:47 UTC on 30 Oct only) to confirm cron fires at all.
+    # TEMPORARY one-off (05:45 UTC on 30 Oct only) to confirm cron fires at all.
     # Pinned to a single date so it can't repeat; premarket-overnight ignores it.
-    - cron: "47 4 30 10 *"
+    - cron: "45 5 30 10 *"
 
 jobs:
   build:
